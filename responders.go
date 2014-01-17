@@ -116,6 +116,8 @@ func createResponse(data interface{}) map[string]interface{} {
 				responseValue = source.Response()
 			case fmt.Stringer:
 				responseValue = source.String()
+			case error:
+				responseValue = source.Error()
 			default:
 				if fieldKind == reflect.Struct || fieldKind == reflect.Ptr {
 					responseValue = createResponse(source)
