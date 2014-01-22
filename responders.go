@@ -14,7 +14,11 @@ import (
 	"reflect"
 	"strings"
 	"unicode"
+	"errors"
 )
+
+// database/sql has nullable values which all have the same prefix.
+const SqlNullablePrefix = "Null"
 
 // ResponseCreator is a datatype that prefers to create its own
 // response value when used as a value within a response, rather than
@@ -83,8 +87,45 @@ func ignorePanic() {
 	recover()
 }
 
-func createResponse(data interface{}) map[string]interface{} {
-	response := make(map[string]interface{})
+// createNullableDbResponse checks for "database/sql".Null* types, or
+// anything with a similar structure, and pulls out the underlying
+// value.  For example:
+//
+// type NullInt struct {
+//     Int int
+//     Valid bool
+// }
+//
+// If Valid is false, this function will return nil; otherwise, it
+// will return the value of the Int field.
+func createNullableDbResponse(value reflect.Value, valueType reflect.Type) (interface{}, error) {
+	typeName := valueType.Name()
+	if strings.HasPrefix(typeName, SqlNullablePrefix) {
+		fieldName := typeName[len(SqlNullablePrefix):]
+		val := value.FieldByName(fieldName)
+		isNotNil := value.FieldByName("Valid")
+		if val.IsValid() && isNotNil.IsValid() {
+			// We've found a nullable type
+			if isNotNil.Interface().(bool) {
+				return val.Interface(), nil
+			} else {
+				return nil, nil
+			}
+		}
+	}
+	return nil, errors.New("No Nullable DB value found")
+}
+
+// createResponse takes a value to be used as a response and attempts
+// to generate a map of values, to be used in the response, from the
+// value's fields.  It returns an empty map if the passed in value is
+// not a struct.
+//
+// It uses the "response" struct tag for naming purposes when
+// converting from a struct type to a map[string]interface{} type - if
+// a field has a "response" tag, that will be used for the index in
+// the response; otherwise, the lowercase field name will be used.
+func createResponse(data interface{}) interface{} {
 	value := reflect.ValueOf(data)
 	structType := value.Type()
 	if structType.Name() == "" {
@@ -92,6 +133,13 @@ func createResponse(data interface{}) map[string]interface{} {
 		value = reflect.Indirect(value)
 		structType = value.Type()
 	}
+
+	// Support "database/sql".Null* types
+	if v, err := createNullableDbResponse(value, structType); err == nil {
+		return v
+	}
+
+	response := make(map[string]interface{})
 
 	// This next bit assumes that the data is a struct, which it may
 	// not be.  If it's not, we don't really care, though - so we'll
@@ -104,7 +152,9 @@ func createResponse(data interface{}) map[string]interface{} {
 		fieldValue := value.Field(i)
 
 		if fieldType.Anonymous {
-			for key, value := range createResponse(fieldValue.Interface()) {
+			embeddedResponse := createResponse(fieldValue.Interface()).(map[string]interface{})
+			for key, value := range embeddedResponse {
+				// Don't overwrite values from the base struct
 				if _, ok := response[key]; !ok {
 					response[key] = value
 				}
