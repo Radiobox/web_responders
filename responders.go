@@ -218,9 +218,7 @@ func Respond(ctx context.Context, status int, notifications MessageMap, data int
 		"notifications": notifications,
 	})
 
-	if response := createResponse(data); response != nil {
-		data = response
-	}
+	data = createResponse(data)
 
 	return goweb.API.WriteResponseObject(ctx, status, data)
 }
