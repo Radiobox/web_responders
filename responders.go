@@ -265,40 +265,42 @@ func ParseParams(ctx context.Context) (objx.Map, error) {
 
 // ParsePage reads "page" and "page_size" from a set of parameters and
 // parses them into offset and limit values.
-func ParsePage(params objx.Map) (offset, limit int64, err error) {
+func ParsePage(params objx.Map, defaultPageSize int) (offset, limit int, err error) {
+	limit = defaultPageSize
+
 	sizeVal, sizeOk := params["pageSize"]
 	pageVal, pageOk := params["page"]
 	if !pageOk || !sizeOk {
 		return
 	}
 
-	var page, pageSize int64
+	var page, pageSize int
 	switch sizeVal := sizeVal.(type) {
 	case string:
-		pageSize, err = strconv.ParseInt(sizeVal, 10, 64)
+		pageSize, err = strconv.Atoi(sizeVal)
 		if err != nil {
 			return
 		}
 	case int:
-		pageSize = int64(sizeVal)
-	case int32:
-		pageSize = int64(sizeVal)
-	case int64:
 		pageSize = sizeVal
+	case int32:
+		pageSize = int(sizeVal)
+	case int64:
+		pageSize = int(sizeVal)
 	}
 
 	switch pageVal := pageVal.(type) {
 	case string:
-		page, err = strconv.ParseInt(pageVal, 10, 64)
+		page, err = strconv.Atoi(pageVal)
 		if err != nil {
 			return
 		}
 	case int:
-		page = int64(pageVal)
-	case int32:
-		page = int64(pageVal)
-	case int64:
 		page = pageVal
+	case int32:
+		page = int(pageVal)
+	case int64:
+		page = int(pageVal)
 	}
 
 	offset = (page - 1) * pageSize
