@@ -84,10 +84,6 @@ func (mm MessageMap) NumInfos() int {
 	return len(mm.Infos())
 }
 
-func ignorePanic() {
-	recover()
-}
-
 // createNullableDbResponse checks for "database/sql".Null* types, or
 // anything with a similar structure, and pulls out the underlying
 // value.  For example:
@@ -128,28 +124,60 @@ func createNullableDbResponse(value reflect.Value, valueType reflect.Type) (inte
 // the response; otherwise, the lowercase field name will be used.
 func createResponse(data interface{}) interface{} {
 	value := reflect.ValueOf(data)
-	structType := value.Type()
-	if structType.Name() == "" {
-		// data is probably a pointer, so get the indirect.
-		value = reflect.Indirect(value)
-		structType = value.Type()
+	switch value.Kind() {
+	case reflect.Struct:
+		return createStructResponse(value)
+	case reflect.Slice, reflect.Array:
+		return createSliceResponse(value)
+	default:
+		return data
 	}
+}
 
-	// Support "database/sql".Null* types
+func createSliceResponse(value reflect.Value) []interface{} {
+	response := make([]interface{}, 0, value.Len())
+	for i := 0; i < value.Len(); i++ {
+		element := value.Index(i)
+		response = append(response, createResponseValue(element))
+	}
+	return response
+}
+
+func createResponseValue(value reflect.Value) (responseValue interface{}) {
+	kind := value.Kind()
+	switch source := value.Interface().(type) {
+	case ResponseCreator:
+		responseValue = source.Response()
+	case fmt.Stringer:
+		responseValue = source.String()
+	case error:
+		responseValue = source.Error()
+	default:
+		if kind == reflect.Struct || kind == reflect.Ptr {
+			responseValue = createStructResponse(value)
+		} else {
+			responseValue = source
+		}
+	}
+	return
+}
+
+func createStructResponse(value reflect.Value) interface{} {
+	if value.Kind() == reflect.Ptr {
+		value = value.Elem()
+	}
+	structType := value.Type()
+
+	// Support "database/sql".Null* types, and any other types
+	// matching that structure
 	if v, err := createNullableDbResponse(value, structType); err == nil {
 		return v
 	}
 
 	response := make(map[string]interface{})
 
-	// This next bit assumes that the data is a struct, which it may
-	// not be.  If it's not, we don't really care, though - so we'll
-	// just ignore it and move on.
-	defer ignorePanic()
-
 	for i := 0; i < value.NumField(); i++ {
 		fieldType := structType.Field(i)
-		fieldKind := fieldType.Type.Kind()
 		fieldValue := value.Field(i)
 
 		if fieldType.Anonymous {
@@ -161,21 +189,7 @@ func createResponse(data interface{}) interface{} {
 				}
 			}
 		} else if unicode.IsUpper(rune(fieldType.Name[0])) {
-			var responseValue interface{}
-			switch source := fieldValue.Interface().(type) {
-			case ResponseCreator:
-				responseValue = source.Response()
-			case fmt.Stringer:
-				responseValue = source.String()
-			case error:
-				responseValue = source.Error()
-			default:
-				if fieldKind == reflect.Struct || fieldKind == reflect.Ptr {
-					responseValue = createResponse(source)
-				} else {
-					responseValue = source
-				}
-			}
+			responseValue := createResponseValue(fieldValue)
 
 			name := fieldType.Tag.Get("response")
 			switch name {
