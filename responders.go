@@ -126,9 +126,20 @@ func createResponse(data interface{}) interface{} {
 		return createStructResponse(value)
 	case reflect.Slice, reflect.Array:
 		return createSliceResponse(value)
+	case reflect.Map:
+		return createMapResponse(value)
 	default:
 		return data
 	}
+}
+
+func createMapResponse(value reflect.Value) interface{} {
+	response := reflect.MakeMap(value.Type())
+	for _, key := range value.MapKeys() {
+		itemResponse := createResponseValue(value.MapIndex(key))
+		response.SetMapIndex(key, reflect.ValueOf(itemResponse))
+	}
+	return response.Interface()
 }
 
 func createSliceResponse(value reflect.Value) []interface{} {
@@ -141,7 +152,6 @@ func createSliceResponse(value reflect.Value) []interface{} {
 }
 
 func createResponseValue(value reflect.Value) (responseValue interface{}) {
-	kind := value.Kind()
 	switch source := value.Interface().(type) {
 	case ResponseCreator:
 		responseValue = source.Response()
@@ -150,9 +160,22 @@ func createResponseValue(value reflect.Value) (responseValue interface{}) {
 	case error:
 		responseValue = source.Error()
 	default:
-		if kind == reflect.Struct || kind == reflect.Ptr {
+		// Use reflect to try to handle nested elements
+		switch value.Kind() {
+		case reflect.Ptr:
+			value = value.Elem()
+			fallthrough
+		case reflect.Struct:
 			responseValue = createStructResponse(value)
-		} else {
+		case reflect.Map:
+			responseValue = createMapResponse(value)
+		case reflect.Slice:
+			responseValue = createSliceResponse(value)
+		default:
+			// Pretty sure we've handled all of the common scenarios
+			// where the actual source element needs to be converted,
+			// so at this point, the source element probably works
+			// just fine as is.
 			responseValue = source
 		}
 	}
