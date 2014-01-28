@@ -4,17 +4,18 @@
 package rest_codecs
 
 import (
-	"github.com/Radiobox/rest_codecs/codecs"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/Radiobox/rest_codecs/codecs"
 	"github.com/stretchr/goweb"
 	"github.com/stretchr/goweb/context"
 	"github.com/stretchr/objx"
 	"io/ioutil"
 	"reflect"
+	"strconv"
 	"strings"
 	"unicode"
-	"errors"
 )
 
 // database/sql has nullable values which all have the same prefix.
@@ -260,6 +261,49 @@ func ParseParams(ctx context.Context) (objx.Map, error) {
 	}
 	ctx.Data().Set("params", response)
 	return response, nil
+}
+
+// ParsePage reads "page" and "page_size" from a set of parameters and
+// parses them into offset and limit values.
+func ParsePage(params objx.Map) (offset, limit int64, err error) {
+	sizeVal, sizeOk := params["pageSize"]
+	pageVal, pageOk := params["page"]
+	if !pageOk || !sizeOk {
+		return
+	}
+
+	var page, pageSize int64
+	switch sizeVal := sizeVal.(type) {
+	case string:
+		pageSize, err = strconv.ParseInt(sizeVal, 10, 64)
+		if err != nil {
+			return
+		}
+	case int:
+		pageSize = int64(sizeVal)
+	case int32:
+		pageSize = int64(sizeVal)
+	case int64:
+		pageSize = sizeVal
+	}
+
+	switch pageVal := pageVal.(type) {
+	case string:
+		page, err = strconv.ParseInt(pageVal, 10, 64)
+		if err != nil {
+			return
+		}
+	case int:
+		page = int64(pageVal)
+	case int32:
+		page = int64(pageVal)
+	case int64:
+		page = pageVal
+	}
+
+	offset = (page - 1) * pageSize
+	limit = pageSize
+	return
 }
 
 func init() {
