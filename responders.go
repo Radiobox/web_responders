@@ -121,6 +121,9 @@ func createNullableDbResponse(value reflect.Value, valueType reflect.Type) (inte
 // the response; otherwise, the lowercase field name will be used.
 func createResponse(data interface{}) interface{} {
 	value := reflect.ValueOf(data)
+	if value.Kind() == reflect.Ptr {
+		value = value.Elem()
+	}
 	switch value.Kind() {
 	case reflect.Struct:
 		return createStructResponse(value)
@@ -183,9 +186,6 @@ func createResponseValue(value reflect.Value) (responseValue interface{}) {
 }
 
 func createStructResponse(value reflect.Value) interface{} {
-	if value.Kind() == reflect.Ptr {
-		value = value.Elem()
-	}
 	structType := value.Type()
 
 	// Support "database/sql".Null* types, and any other types
