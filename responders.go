@@ -1,7 +1,7 @@
 // The rest_codecs package takes care of our custom vendor codecs for
 // Radiobox, handling responses and even providing helpers for parsing
 // input parameters.
-package rest_codecs
+package web_responders
 
 import (
 	"errors"

@@ -1,4 +1,4 @@
-package rest_codecs
+package web_responders
 
 import (
 	"github.com/stretchr/goweb/context"
