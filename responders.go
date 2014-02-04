@@ -7,10 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Radiobox/rest_codecs/codecs"
+	"github.com/Radiobox/web_request_readers"
 	"github.com/stretchr/goweb"
 	"github.com/stretchr/goweb/context"
 	"github.com/stretchr/objx"
-	"github.com/Radiobox/model_helpers"
 	"reflect"
 	"strings"
 	"unicode"
@@ -271,7 +271,7 @@ func createResponseValue(value reflect.Value) (responseValue interface{}) {
 // particular function is very specifically for use with the
 // github.com/stretchr/goweb web framework.
 func Respond(ctx context.Context, status int, notifications MessageMap, data interface{}) error {
-	params, err := model_helpers.ParseParams(ctx)
+	params, err := web_request_readers.ParseParams(ctx)
 	if err != nil {
 		return err
 	}
