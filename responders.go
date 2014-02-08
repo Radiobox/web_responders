@@ -216,8 +216,6 @@ func createStructResponse(value reflect.Value) interface{} {
 				}
 			}
 		} else if unicode.IsUpper(rune(fieldType.Name[0])) {
-			responseValue := createResponseValue(fieldValue)
-
 			name := fieldType.Tag.Get("response")
 			switch name {
 			case "-":
@@ -226,7 +224,7 @@ func createStructResponse(value reflect.Value) interface{} {
 				name = strings.ToLower(fieldType.Name)
 				fallthrough
 			default:
-				response[name] = responseValue
+				response[name] = createResponseValue(fieldValue)
 			}
 		}
 	}
