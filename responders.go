@@ -123,6 +123,9 @@ func (mm MessageMap) NumInfos() int {
 // implement the ResponseValueCreator, and instead just use the return
 // value of their ResponseValue() method.
 func CreateResponse(data interface{}) interface{} {
+	if err, ok := data.(error); ok {
+		return err.Error()
+	}
 	value := reflect.ValueOf(data)
 	if value.Kind() == reflect.Ptr {
 		value = value.Elem()
