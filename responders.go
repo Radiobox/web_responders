@@ -19,97 +19,13 @@ import (
 // database/sql has nullable values which all have the same prefix.
 const SqlNullablePrefix = "Null"
 
-// ResponseCreator is a datatype that prefers to create its own
-// response value when it is used as a piece of a response (i.e. in a
-// struct field, or as a value in a slice or map).
-//
-// This is particularly useful for compressing a large struct to
-// something much smaller in two situations:
-//
-// 1. You are responding with a list of *many* of the large struct
-// type, often as part of a `GET /resource` response.
-// 2. You are responding with a struct type that includes the large
-// struct type as a field, often as part of a `GET /otherresource/id`
-// response.
-type ResponseValueCreator interface {
-
-	// ResponseValue should return the value that will be used to
-	// represent the underlying value in a response.
-	ResponseValue() interface{}
-}
-
-// MessageMap is a map intended to be used for carrying messages
-// around, for the purpose of error handling.  Methods on MessageMap
-// always expect the MessageMap to already contain the keys "err",
-// "warn", and "info"; and for each of those to contain a slice of
-// strings.  You can use NewMessageMap() to set up an empty MessageMap
-// value.
-type MessageMap map[string][]string
-
-// NewMessageMap returns a MessageMap that is properly initialized.
-func NewMessageMap() MessageMap {
-	return MessageMap{
-		"err":  []string{},
-		"warn": []string{},
-		"info": []string{},
-	}
-}
-
-func (mm MessageMap) addMessage(severity, message string) {
-	mm[severity] = append(mm[severity], message)
-}
-
-// AddErrorMessage adds an error message to the message map.
-func (mm MessageMap) AddErrorMessage(message string) {
-	mm.addMessage("err", message)
-}
-
-// Errors returns a slice of all the error messages that have been
-// added to this message map.
-func (mm MessageMap) Errors() []string {
-	return mm["err"]
-}
-
-// AddWarningMessage adds a warning message to the message map.
-func (mm MessageMap) AddWarningMessage(message string) {
-	mm.addMessage("warn", message)
-}
-
-// Warnings returns a slice of all warning messages that have been
-// added to this message map.
-func (mm MessageMap) Warnings() []string {
-	return mm["warn"]
-}
-
-// AddInfoMessage adds an info message to this message map.
-func (mm MessageMap) AddInfoMessage(message string) {
-	mm.addMessage("info", message)
-}
-
-// Infos returns a slice of all info messages that have been added to
-// this message map.
-func (mm MessageMap) Infos() []string {
-	return mm["info"]
-}
-
-// NumErrors is sugar for len(MessageMap.Errors())
-func (mm MessageMap) NumErrors() int {
-	return len(mm.Errors())
-}
-
-// NumErrors is sugar for len(MessageMap.Warnings())
-func (mm MessageMap) NumWarnings() int {
-	return len(mm.Warnings())
-}
-
-// NumErrors is sugar for len(MessageMap.Infos())
-func (mm MessageMap) NumInfos() int {
-	return len(mm.Infos())
-}
-
 // CreateResponse takes a value to be used as a response and attempts
 // to generate a value to respond with, based on struct tag and
 // interface matching.
+//
+// Values which implement LazyLoader will have their LazyLoad method
+// run first, in order to load any values that haven't been loaded
+// yet.
 //
 // Struct values will be converted to a map[string]interface{}.  Each
 // field will be assigned a key - the "request" tag's value if it
@@ -125,6 +41,9 @@ func (mm MessageMap) NumInfos() int {
 func CreateResponse(data interface{}) interface{} {
 	if err, ok := data.(error); ok {
 		return err.Error()
+	}
+	if lazyLoader, ok := data.(LazyLoader); ok {
+		lazyLoader.LazyLoad()
 	}
 	value := reflect.ValueOf(data)
 	if value.Kind() == reflect.Ptr {
