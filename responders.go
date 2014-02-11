@@ -1,5 +1,5 @@
-// The rest_codecs package takes care of our custom vendor codecs for
-// Radiobox, handling responses and even providing helpers for parsing
+// The web_responders package takes care of our custom vendor codecs for
+// Radiobox, handling responses, and even providing helpers for parsing
 // input parameters.
 package web_responders
 
