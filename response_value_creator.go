@@ -9,6 +9,7 @@ package web_responders
 //
 // 1. You are responding with a list of *many* of the large struct
 // type, often as part of a `GET /resource` response.
+//
 // 2. You are responding with a struct type that includes the large
 // struct type as a field, often as part of a `GET /otherresource/id`
 // response.

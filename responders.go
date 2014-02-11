@@ -65,10 +65,10 @@ func CreateResponse(data interface{}) interface{} {
 // anything with a similar structure, and pulls out the underlying
 // value.  For example:
 //
-// type NullInt struct {
-//     Int int
-//     Valid bool
-// }
+//     type NullInt struct {
+//         Int int
+//         Valid bool
+//     }
 //
 // If Valid is false, this function will return nil; otherwise, it
 // will return the value of the Int field.
