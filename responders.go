@@ -190,6 +190,9 @@ func createResponseValue(value reflect.Value) (responseValue interface{}) {
 // the context's CodecOptions to support our custom codecs.  This
 // particular function is very specifically for use with the
 // github.com/stretchr/goweb web framework.
+//
+// TODO: Move the with={} parameter to options in the mimetypes in the
+// Accept header.
 func Respond(ctx context.Context, status int, notifications MessageMap, data interface{}) error {
 	params, err := web_request_readers.ParseParams(ctx)
 	if err != nil {
@@ -201,6 +204,21 @@ func Respond(ctx context.Context, status int, notifications MessageMap, data int
 		"input_params":  params,
 		"notifications": notifications,
 	})
+
+	// Once I figure out how to, I would like to move this to the
+	// parameters passed to the mime types in the Accept header.
+	if withStr := ctx.QueryValue("with"); withStr != "" {
+		if joiner, ok := data.(Joiner); ok {
+			with, err := objx.FromJSON(withStr)
+			if err != nil {
+				notifications.AddWarningMessage("Could not parse with string as json")
+			} else {
+				joiner.Join(with)
+			}
+		} else {
+			notifications.AddWarningMessage("with parameter sent, but response object cannot handle it")
+		}
+	}
 
 	data = CreateResponse(data)
 
