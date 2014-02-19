@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/goweb"
 	"github.com/stretchr/goweb/context"
 	"github.com/stretchr/objx"
-	"log"
 	"reflect"
 	"strings"
 	"unicode"
