@@ -73,7 +73,7 @@ func createResponse(data interface{}, isSubResponse bool, options objx.Map, cons
 		data = createStructResponse(value, options, constructor)
 	case reflect.Slice, reflect.Array:
 		data = createSliceResponse(value, options, constructor)
-		if isSubResponse {
+		if options != nil && isSubResponse {
 			data = constructor(data)
 		}
 	case reflect.Map:
@@ -116,7 +116,11 @@ func createNullableDbResponse(value reflect.Value, valueType reflect.Type) (inte
 func createMapResponse(value reflect.Value, options objx.Map, constructor func(interface{}) interface{}) interface{} {
 	response := reflect.MakeMap(value.Type())
 	for _, key := range value.MapKeys() {
-		elementOptions := options.Get(key.Interface().(string)).ObjxMap()
+		var elementOptions objx.Map
+		keyStr := key.Interface().(string)
+		if options != nil && options.Has(keyStr) {
+			elementOptions = options.Get(keyStr).ObjxMap()
+		}
 		itemResponse := createResponseValue(value.MapIndex(key), elementOptions, constructor)
 		response.SetMapIndex(key, reflect.ValueOf(itemResponse))
 	}
@@ -168,7 +172,18 @@ func createStructResponse(value reflect.Value, options objx.Map, constructor fun
 				name = strings.ToLower(fieldType.Name)
 				fallthrough
 			default:
-				response[name] = createResponseValue(fieldValue, options.Get(name).ObjxMap(), constructor)
+				var subOptions objx.Map
+				if options != nil && options.Has(name) {
+					subOptionsValue := options.Get(name)
+					if subOptionsValue.IsMSI() {
+						subOptions = objx.Map(subOptionsValue.MSI())
+					} else if subOptionsValue.IsObjxMap() {
+						subOptions = subOptionsValue.ObjxMap()
+					} else {
+						panic("Don't know what to do with option")
+					}
+				}
+				response[name] = createResponseValue(fieldValue, subOptions, constructor)
 			}
 		}
 	}
@@ -187,7 +202,7 @@ func createResponseValue(value reflect.Value, options objx.Map, constructor func
 		case error:
 			responseValue = source.Error()
 		default:
-			responseValue = CreateResponse(value.Interface(), options, constructor)
+			responseValue = createResponse(value.Interface(), true, options, constructor)
 		}
 	} else {
 		responseValue = createResponse(value.Interface(), true, options, constructor)

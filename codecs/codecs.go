@@ -9,7 +9,6 @@
 package codecs
 
 import (
-	"encoding/json"
 	"errors"
 	"github.com/Radiobox/web_responders"
 	"github.com/stretchr/goweb"
@@ -50,9 +49,11 @@ func (codec *RadioboxApiCodec) Marshal(object interface{}, options map[string]in
 	} else {
 		joinsStr = options["input_params"].(objx.Map).Get("joins").Str()
 	}
-	joins := make(objx.Map)
+	var joins objx.Map
 	if joinsStr != "" {
-		if err := json.Unmarshal([]byte(joinsStr), &joins); err != nil {
+		var err error
+		joins, err = objx.FromJSON(joinsStr)
+		if err != nil {
 			log.Print("Could not load joins options: " + err.Error())
 		}
 	}
