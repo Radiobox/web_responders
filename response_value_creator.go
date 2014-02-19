@@ -1,5 +1,9 @@
 package web_responders
 
+import (
+	"github.com/stretchr/objx"
+)
+
 // ResponseValueCreator is a datatype that prefers to create its own
 // response value when it is used as a piece of a response (i.e. in a
 // struct field, or as a value in a slice or map).
@@ -17,5 +21,5 @@ type ResponseValueCreator interface {
 
 	// ResponseValue should return the value that will be used to
 	// represent the underlying value in a response.
-	ResponseValue() interface{}
+	ResponseValue(options objx.Map) interface{}
 }

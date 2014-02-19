@@ -9,8 +9,12 @@
 package codecs
 
 import (
+	"encoding/json"
 	"errors"
+	"github.com/Radiobox/web_responders"
 	"github.com/stretchr/goweb"
+	"github.com/stretchr/objx"
+	"log"
 	"strings"
 )
 
@@ -24,17 +28,37 @@ const (
 type RadioboxApiCodec struct {
 }
 
+func (codec *RadioboxApiCodec) CreateConstructor(options map[string]interface{}) func(interface{}) interface{} {
+	return func(object interface{}) interface{} {
+		return map[string]interface{}{
+			"meta": map[string]interface{}{
+				"code":         options["status"],
+				"input_params": options["input_params"],
+			},
+			"notifications": options["notifications"],
+			"response":      object,
+		}
+	}
+}
+
 // Marshal encapsulates the passed in object with our encapsulation
 // format.
 func (codec *RadioboxApiCodec) Marshal(object interface{}, options map[string]interface{}) ([]byte, error) {
-	response := map[string]interface{}{
-		"meta": map[string]interface{}{
-			"code":         options["status"],
-			"input_params": options["input_params"],
-		},
-		"notifications": options["notifications"],
-		"response":      object,
+	var joinsStr string
+	if joinsValue, ok := options["joins"]; ok {
+		joinsStr = joinsValue.(string)
+	} else {
+		joinsStr = options["input_params"].(objx.Map).Get("joins").Str()
 	}
+	joins := make(objx.Map)
+	if joinsStr != "" {
+		if err := json.Unmarshal([]byte(joinsStr), &joins); err != nil {
+			log.Print("Could not load joins options: " + err.Error())
+		}
+	}
+	constructor := codec.CreateConstructor(options)
+	object = web_responders.CreateResponse(object, joins, constructor)
+	response := constructor(object)
 
 	matchedType, ok := options["matched_type"].(string)
 	var baseType string

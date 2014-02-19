@@ -37,5 +37,5 @@ type Joiner interface {
 
 	// Join should accept a map of options and populate any nested
 	// structs with joined values from the database.
-	Join(objx.Map)
+	Join(objx.Map, func(interface{}) interface{})
 }

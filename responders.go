@@ -6,11 +6,11 @@ package web_responders
 import (
 	"errors"
 	"fmt"
-	"github.com/Radiobox/rest_codecs/codecs"
 	"github.com/Radiobox/web_request_readers"
 	"github.com/stretchr/goweb"
 	"github.com/stretchr/goweb/context"
 	"github.com/stretchr/objx"
+	"log"
 	"reflect"
 	"strings"
 	"unicode"
@@ -38,27 +38,49 @@ const SqlNullablePrefix = "Null"
 // (i.e. entries in a slice or map, or fields of a struct) that
 // implement the ResponseValueCreator, and instead just use the return
 // value of their ResponseValue() method.
-func CreateResponse(data interface{}) interface{} {
+func CreateResponse(data interface{}, optionList ...interface{}) interface{} {
 	if err, ok := data.(error); ok {
 		return err.Error()
 	}
-	if lazyLoader, ok := data.(LazyLoader); ok {
-		lazyLoader.LazyLoad()
+
+	// Parse options
+	var (
+		options     objx.Map
+		constructor func(interface{}) interface{}
+	)
+	switch len(optionList) {
+	case 2:
+		constructor = optionList[1].(func(interface{}) interface{})
+		fallthrough
+	case 1:
+		options = optionList[0].(objx.Map)
 	}
+	return createResponse(data, false, options, constructor)
+}
+
+func createResponse(data interface{}, isSubResponse bool, options objx.Map, constructor func(interface{}) interface{}) interface{} {
+
+	// LazyLoad with options
+	if lazyLoader, ok := data.(LazyLoader); ok {
+		lazyLoader.LazyLoad(options)
+	}
+
 	value := reflect.ValueOf(data)
 	if value.Kind() == reflect.Ptr {
 		value = value.Elem()
 	}
 	switch value.Kind() {
 	case reflect.Struct:
-		return createStructResponse(value)
+		data = createStructResponse(value, options, constructor)
 	case reflect.Slice, reflect.Array:
-		return createSliceResponse(value)
+		data = createSliceResponse(value, options, constructor)
+		if isSubResponse {
+			data = constructor(data)
+		}
 	case reflect.Map:
-		return createMapResponse(value)
-	default:
-		return data
+		data = createMapResponse(value, options, constructor)
 	}
+	return data
 }
 
 // createNullableDbResponse checks for "database/sql".Null* types, or
@@ -92,10 +114,11 @@ func createNullableDbResponse(value reflect.Value, valueType reflect.Type) (inte
 
 // createMapResponse is a helper for generating a response value from
 // a value of type map.
-func createMapResponse(value reflect.Value) interface{} {
+func createMapResponse(value reflect.Value, options objx.Map, constructor func(interface{}) interface{}) interface{} {
 	response := reflect.MakeMap(value.Type())
 	for _, key := range value.MapKeys() {
-		itemResponse := createResponseValue(value.MapIndex(key))
+		elementOptions := options.Get(key.Interface().(string)).ObjxMap()
+		itemResponse := createResponseValue(value.MapIndex(key), elementOptions, constructor)
 		response.SetMapIndex(key, reflect.ValueOf(itemResponse))
 	}
 	return response.Interface()
@@ -103,18 +126,18 @@ func createMapResponse(value reflect.Value) interface{} {
 
 // createSliceResponse is a helper for generating a response value
 // from a value of type slice.
-func createSliceResponse(value reflect.Value) []interface{} {
+func createSliceResponse(value reflect.Value, options objx.Map, constructor func(interface{}) interface{}) interface{} {
 	response := make([]interface{}, 0, value.Len())
 	for i := 0; i < value.Len(); i++ {
 		element := value.Index(i)
-		response = append(response, createResponseValue(element))
+		response = append(response, createResponseValue(element, options, constructor))
 	}
 	return response
 }
 
 // createStructResponse is a helper for generating a response value
 // from a value of type struct.
-func createStructResponse(value reflect.Value) interface{} {
+func createStructResponse(value reflect.Value, options objx.Map, constructor func(interface{}) interface{}) interface{} {
 	structType := value.Type()
 
 	// Support "database/sql".Null* types, and any other types
@@ -123,14 +146,14 @@ func createStructResponse(value reflect.Value) interface{} {
 		return v
 	}
 
-	response := make(map[string]interface{})
+	response := make(objx.Map)
 
 	for i := 0; i < value.NumField(); i++ {
 		fieldType := structType.Field(i)
 		fieldValue := value.Field(i)
 
 		if fieldType.Anonymous {
-			embeddedResponse := CreateResponse(fieldValue.Interface()).(map[string]interface{})
+			embeddedResponse := CreateResponse(fieldValue.Interface(), options, constructor).(objx.Map)
 			for key, value := range embeddedResponse {
 				// Don't overwrite values from the base struct
 				if _, ok := response[key]; !ok {
@@ -146,7 +169,7 @@ func createStructResponse(value reflect.Value) interface{} {
 				name = strings.ToLower(fieldType.Name)
 				fallthrough
 			default:
-				response[name] = createResponseValue(fieldValue)
+				response[name] = createResponseValue(fieldValue, options.Get(name).ObjxMap(), constructor)
 			}
 		}
 	}
@@ -155,33 +178,20 @@ func createStructResponse(value reflect.Value) interface{} {
 
 // createResponseValue is a helper for generating a response value for
 // a single value in a response object.
-func createResponseValue(value reflect.Value) (responseValue interface{}) {
-	switch source := value.Interface().(type) {
-	case ResponseValueCreator:
-		responseValue = source.ResponseValue()
-	case fmt.Stringer:
-		responseValue = source.String()
-	case error:
-		responseValue = source.Error()
-	default:
-		// Use reflect to try to handle nested elements
-		switch value.Kind() {
-		case reflect.Ptr:
-			value = value.Elem()
-			fallthrough
-		case reflect.Struct:
-			responseValue = createStructResponse(value)
-		case reflect.Map:
-			responseValue = createMapResponse(value)
-		case reflect.Slice:
-			responseValue = createSliceResponse(value)
+func createResponseValue(value reflect.Value, options objx.Map, constructor func(interface{}) interface{}) (responseValue interface{}) {
+	if options.Get("type").Str() != "full" {
+		switch source := value.Interface().(type) {
+		case ResponseValueCreator:
+			responseValue = source.ResponseValue(options)
+		case fmt.Stringer:
+			responseValue = source.String()
+		case error:
+			responseValue = source.Error()
 		default:
-			// Pretty sure we've handled all of the common scenarios
-			// where the actual source element needs to be converted,
-			// so at this point, the source element probably works
-			// just fine as is.
-			responseValue = source
+			responseValue = CreateResponse(value.Interface(), options, constructor)
 		}
+	} else {
+		responseValue = createResponse(value.Interface(), true, options, constructor)
 	}
 	return
 }
@@ -198,6 +208,7 @@ func Respond(ctx context.Context, status int, notifications MessageMap, data int
 	if err != nil {
 		return err
 	}
+	params.Set("joins", ctx.QueryValue("joins"))
 	options := ctx.CodecOptions()
 	options.MergeHere(objx.Map{
 		"status":        status,
@@ -205,26 +216,10 @@ func Respond(ctx context.Context, status int, notifications MessageMap, data int
 		"notifications": notifications,
 	})
 
-	// Once I figure out how to, I would like to move this to the
-	// parameters passed to the mime types in the Accept header.
-	if withStr := ctx.QueryValue("with"); withStr != "" {
-		if joiner, ok := data.(Joiner); ok {
-			with, err := objx.FromJSON(withStr)
-			if err != nil {
-				notifications.AddWarningMessage("Could not parse with string as json")
-			} else {
-				joiner.Join(with)
-			}
-		} else {
-			notifications.AddWarningMessage("with parameter sent, but response object cannot handle it")
-		}
-	}
-
-	data = CreateResponse(data)
+	// Right now, this line is commented out to support our joins
+	// logic.  Unfortunately, that means that codecs other than our
+	// custom codecs from this package will not work.  Whoops.
+	// data = CreateResponse(data)
 
 	return goweb.API.WriteResponseObject(ctx, status, data)
-}
-
-func init() {
-	codecs.AddCodecs()
 }
