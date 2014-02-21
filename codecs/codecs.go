@@ -10,10 +10,12 @@ package codecs
 
 import (
 	"errors"
+	"fmt"
 	"github.com/Radiobox/web_responders"
 	"github.com/stretchr/goweb"
 	"github.com/stretchr/objx"
 	"log"
+	"path"
 	"strings"
 )
 
@@ -27,16 +29,31 @@ const (
 type RadioboxApiCodec struct {
 }
 
-func (codec *RadioboxApiCodec) CreateConstructor(options map[string]interface{}) func(interface{}) interface{} {
-	return func(object interface{}) interface{} {
-		return map[string]interface{}{
+func (codec *RadioboxApiCodec) CreateConstructor(options map[string]interface{}) func(interface{}, interface{}) interface{} {
+	return func(object interface{}, originalObject interface{}) interface{} {
+		var links map[string]string
+		if linker, ok := originalObject.(web_responders.RelatedLinker); ok {
+			links = linker.RelatedLinks()
+		} else {
+			links = map[string]string{}
+		}
+		protocol := options["protocol"].(string)
+		host := options["host"].(string)
+		for rel, link := range links {
+			fullLink := path.Join(host, link)
+			links[rel] = fmt.Sprintf("%s://%s", protocol, fullLink)
+		}
+
+		response := map[string]interface{}{
 			"meta": map[string]interface{}{
 				"code":         options["status"],
 				"input_params": options["input_params"],
+				"links":        links,
 			},
 			"notifications": options["notifications"],
 			"response":      object,
 		}
+		return response
 	}
 }
 
@@ -58,8 +75,8 @@ func (codec *RadioboxApiCodec) Marshal(object interface{}, options map[string]in
 		}
 	}
 	constructor := codec.CreateConstructor(options)
-	object = web_responders.CreateResponse(object, joins, constructor)
-	response := constructor(object)
+	responseObject := web_responders.CreateResponse(object, joins, constructor)
+	response := constructor(responseObject, object)
 
 	matchedType, ok := options["matched_type"].(string)
 	var baseType string

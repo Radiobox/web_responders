@@ -45,11 +45,11 @@ func CreateResponse(data interface{}, optionList ...interface{}) interface{} {
 	// Parse options
 	var (
 		options     objx.Map
-		constructor func(interface{}) interface{}
+		constructor func(interface{}, interface{}) interface{}
 	)
 	switch len(optionList) {
 	case 2:
-		constructor = optionList[1].(func(interface{}) interface{})
+		constructor = optionList[1].(func(interface{}, interface{}) interface{})
 		fallthrough
 	case 1:
 		options = optionList[0].(objx.Map)
@@ -57,7 +57,7 @@ func CreateResponse(data interface{}, optionList ...interface{}) interface{} {
 	return createResponse(data, false, options, constructor)
 }
 
-func createResponse(data interface{}, isSubResponse bool, options objx.Map, constructor func(interface{}) interface{}) interface{} {
+func createResponse(data interface{}, isSubResponse bool, options objx.Map, constructor func(interface{}, interface{}) interface{}) interface{} {
 
 	// LazyLoad with options
 	if lazyLoader, ok := data.(LazyLoader); ok {
@@ -74,7 +74,7 @@ func createResponse(data interface{}, isSubResponse bool, options objx.Map, cons
 	case reflect.Slice, reflect.Array:
 		data = createSliceResponse(value, options, constructor)
 		if options != nil && isSubResponse {
-			data = constructor(data)
+			data = constructor(data, value)
 		}
 	case reflect.Map:
 		data = createMapResponse(value, options, constructor)
@@ -113,7 +113,7 @@ func createNullableDbResponse(value reflect.Value, valueType reflect.Type) (inte
 
 // createMapResponse is a helper for generating a response value from
 // a value of type map.
-func createMapResponse(value reflect.Value, options objx.Map, constructor func(interface{}) interface{}) interface{} {
+func createMapResponse(value reflect.Value, options objx.Map, constructor func(interface{}, interface{}) interface{}) interface{} {
 	response := reflect.MakeMap(value.Type())
 	for _, key := range value.MapKeys() {
 		var elementOptions objx.Map
@@ -141,7 +141,7 @@ func createMapResponse(value reflect.Value, options objx.Map, constructor func(i
 
 // createSliceResponse is a helper for generating a response value
 // from a value of type slice.
-func createSliceResponse(value reflect.Value, options objx.Map, constructor func(interface{}) interface{}) interface{} {
+func createSliceResponse(value reflect.Value, options objx.Map, constructor func(interface{}, interface{}) interface{}) interface{} {
 	response := make([]interface{}, 0, value.Len())
 	for i := 0; i < value.Len(); i++ {
 		element := value.Index(i)
@@ -152,7 +152,7 @@ func createSliceResponse(value reflect.Value, options objx.Map, constructor func
 
 // createStructResponse is a helper for generating a response value
 // from a value of type struct.
-func createStructResponse(value reflect.Value, options objx.Map, constructor func(interface{}) interface{}) interface{} {
+func createStructResponse(value reflect.Value, options objx.Map, constructor func(interface{}, interface{}) interface{}) interface{} {
 	structType := value.Type()
 
 	// Support "database/sql".Null* types, and any other types
@@ -209,7 +209,7 @@ func createStructResponse(value reflect.Value, options objx.Map, constructor fun
 
 // createResponseValue is a helper for generating a response value for
 // a single value in a response object.
-func createResponseValue(value reflect.Value, options objx.Map, constructor func(interface{}) interface{}) (responseValue interface{}) {
+func createResponseValue(value reflect.Value, options objx.Map, constructor func(interface{}, interface{}) interface{}) (responseValue interface{}) {
 	if options.Get("type").Str() != "full" {
 		switch source := value.Interface().(type) {
 		case ResponseValueCreator:
@@ -239,12 +239,34 @@ func Respond(ctx context.Context, status int, notifications MessageMap, data int
 	if err != nil {
 		return err
 	}
-	params.Set("joins", ctx.QueryValue("joins"))
+	if ctx.QueryParams().Has("joins") {
+		params.Set("joins", ctx.QueryValue("joins"))
+	}
+
+	protocol := "http"
+	if ctx.HttpRequest().TLS != nil {
+		protocol += "s"
+	}
+
+	host := ctx.HttpRequest().Host
+
+	if linker, ok := data.(RelatedLinker); ok {
+		linkMap := linker.RelatedLinks()
+		links := make([]string, 0, len(linkMap))
+		for rel, link := range linkMap {
+			link := fmt.Sprintf(`<%s://%s%s>; rel="%s"`, protocol, host, link, rel)
+			links = append(links, link)
+		}
+		ctx.HttpResponseWriter().Header().Set("Link", strings.Join(links, ", "))
+	}
+
 	options := ctx.CodecOptions()
 	options.MergeHere(objx.Map{
 		"status":        status,
 		"input_params":  params,
 		"notifications": notifications,
+		"protocol":      protocol,
+		"host":          host,
 	})
 
 	// Right now, this line is commented out to support our joins
