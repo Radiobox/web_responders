@@ -118,8 +118,20 @@ func createMapResponse(value reflect.Value, options objx.Map, constructor func(i
 	for _, key := range value.MapKeys() {
 		var elementOptions objx.Map
 		keyStr := key.Interface().(string)
-		if options != nil && options.Has(keyStr) {
-			elementOptions = options.Get(keyStr).ObjxMap()
+		if options != nil {
+			var elementOptionsValue *objx.Value
+			if options.Has(keyStr) {
+				elementOptionsValue = options.Get(keyStr)
+			} else if options.Has("*") {
+				elementOptionsValue = options.Get("*")
+			}
+			if elementOptionsValue.IsMSI() {
+				elementOptions = objx.Map(elementOptionsValue.MSI())
+			} else if elementOptionsValue.IsObjxMap() {
+				elementOptions = elementOptionsValue.ObjxMap()
+			} else {
+				panic("Don't know what to do with option")
+			}
 		}
 		itemResponse := createResponseValue(value.MapIndex(key), elementOptions, constructor)
 		response.SetMapIndex(key, reflect.ValueOf(itemResponse))
@@ -173,8 +185,13 @@ func createStructResponse(value reflect.Value, options objx.Map, constructor fun
 				fallthrough
 			default:
 				var subOptions objx.Map
-				if options != nil && options.Has(name) {
-					subOptionsValue := options.Get(name)
+				if options != nil && (options.Has(name) || options.Has("*")) {
+					var subOptionsValue *objx.Value
+					if options.Has(name) {
+						subOptionsValue = options.Get(name)
+					} else {
+						subOptionsValue = options.Get("*")
+					}
 					if subOptionsValue.IsMSI() {
 						subOptions = objx.Map(subOptionsValue.MSI())
 					} else if subOptionsValue.IsObjxMap() {
