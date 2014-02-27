@@ -64,7 +64,12 @@ func createResponse(data interface{}, isSubResponse bool, options objx.Map, cons
 		lazyLoader.LazyLoad(options)
 	}
 
-	value := reflect.ValueOf(data)
+	responseData := data
+	if responseCreator, ok := data.(ResponseObjectCreator); ok {
+		responseData = responseCreator.ResponseObject()
+	}
+
+	value := reflect.ValueOf(responseData)
 	if value.Kind() == reflect.Ptr {
 		value = value.Elem()
 	}
