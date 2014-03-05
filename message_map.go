@@ -1,11 +1,17 @@
 package web_responders
 
+import (
+	"log"
+	"strings"
+)
+
 // MessageMap is a map intended to be used for carrying messages
-// around, for the purpose of error handling.  Methods on MessageMap
-// always expect the MessageMap to already contain the keys "err",
-// "warn", and "info"; and for each of those to contain a slice of
-// strings.  You can use NewMessageMap() to set up an empty MessageMap
-// value.
+// around, for the purpose of error handling.  It will also
+// (concurrently) log messages using the logging package.  Methods on
+// MessageMap always expect the MessageMap to already contain the keys
+// "err", "warn", and "info"; and for each of those to contain a slice
+// of strings.  You can use NewMessageMap() to set up an empty
+// MessageMap value.
 type MessageMap map[string][]string
 
 // NewMessageMap returns a MessageMap that is properly initialized.
@@ -17,7 +23,12 @@ func NewMessageMap() MessageMap {
 	}
 }
 
+func (mm MessageMap) log(severity, message string) {
+	log.Print(strings.ToUpper(severity) + ": " + message)
+}
+
 func (mm MessageMap) addMessage(severity, message string) {
+	go mm.log(severity, message)
 	mm[severity] = append(mm[severity], message)
 }
 
