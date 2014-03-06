@@ -83,6 +83,8 @@ func createResponse(data interface{}, isSubResponse bool, options objx.Map, cons
 		}
 	case reflect.Map:
 		data = createMapResponse(value, options, constructor)
+	default:
+		data = responseData
 	}
 	return data
 }
