@@ -185,7 +185,10 @@ func createStructResponse(value reflect.Value, options objx.Map, constructor fun
 		} else if unicode.IsUpper(rune(fieldType.Name[0])) {
 			name := fieldType.Tag.Get("response")
 			if name == "" && fieldType.Name != "Id" {
-				name = fieldType.Tag.Get("db")
+				// Fall back to db tag if it's not "-"
+				if dbName = fieldType.Tag.Get("db"); dbName != "-" {
+					name = dbName
+				}
 			}
 			switch name {
 			case "-":
