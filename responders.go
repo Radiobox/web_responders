@@ -186,7 +186,7 @@ func createStructResponse(value reflect.Value, options objx.Map, constructor fun
 			name := fieldType.Tag.Get("response")
 			if name == "" && fieldType.Name != "Id" {
 				// Fall back to db tag if it's not "-"
-				if dbName = fieldType.Tag.Get("db"); dbName != "-" {
+				if dbName := fieldType.Tag.Get("db"); dbName != "-" {
 					name = dbName
 				}
 			}
