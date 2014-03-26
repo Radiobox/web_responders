@@ -23,6 +23,7 @@ const (
 	typeCategory    = "application"
 	typeName        = "vnd.radiobox.encapsulated"
 	BasicMimeType   = typeCategory + "/" + typeName
+	defaultMimeType = BasicMimeType + "+json"
 	defaultBaseType = "application/json"
 )
 
@@ -100,7 +101,7 @@ func (codec *RadioboxApiCodec) Unmarshal(data []byte, obj interface{}) error {
 }
 
 func (codec *RadioboxApiCodec) ContentType() string {
-	return BasicMimeType
+	return defaultMimeType
 }
 
 // ContentTypeSupported checks a mime type string to see if this codec
