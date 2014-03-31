@@ -83,6 +83,10 @@ func (mm MessageMap) NumInfos() int {
 
 // SetInputError adds an error message for a specific input name.
 func (mm MessageMap) SetInputMessage(input, message string) {
-	inputErrs := mm["input"].(map[string]string)
+	inputErrs := mm.InputMessages()
 	inputErrs[input] = message
+}
+
+func (mm MessageMap) InputMessages() map[string]string {
+	return mm["input"].(map[string]string)
 }

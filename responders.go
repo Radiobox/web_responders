@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/goweb"
 	"github.com/stretchr/goweb/context"
 	"github.com/stretchr/objx"
+	"net/http"
 	"reflect"
 	"strings"
 	"unicode"
@@ -157,6 +158,19 @@ func createSliceResponse(value reflect.Value, options objx.Map, constructor func
 	return response
 }
 
+func ResponseTag(field reflect.StructField) string {
+	var name string
+	if name = field.Tag.Get("response"); name != "" {
+		return name
+	}
+	if field.Name != "Id" {
+		if name = field.Tag.Get("db"); name != "" && name != "-" {
+			return name
+		}
+	}
+	return strings.ToLower(field.Name)
+}
+
 // createStructResponse is a helper for generating a response value
 // from a value of type struct.
 func createStructResponse(value reflect.Value, options objx.Map, constructor func(interface{}, interface{}) interface{}) interface{} {
@@ -183,19 +197,10 @@ func createStructResponse(value reflect.Value, options objx.Map, constructor fun
 				}
 			}
 		} else if unicode.IsUpper(rune(fieldType.Name[0])) {
-			name := fieldType.Tag.Get("response")
-			if name == "" && fieldType.Name != "Id" {
-				// Fall back to db tag if it's not "-"
-				if dbName := fieldType.Tag.Get("db"); dbName != "-" {
-					name = dbName
-				}
-			}
+			name := ResponseTag(fieldType)
 			switch name {
 			case "-":
 				continue
-			case "":
-				name = strings.ToLower(fieldType.Name)
-				fallthrough
 			default:
 				var subOptions objx.Map
 				if options != nil && (options.Has(name) || options.Has("*")) {
@@ -238,6 +243,94 @@ func createResponseValue(value reflect.Value, options objx.Map, constructor func
 		responseValue = createResponse(value.Interface(), true, options, constructor)
 	}
 	return
+}
+
+// RespondWithInputErrors attempts to figure out where the input
+// values (in ctx) may have caused problems when being set to fields
+// on data, and then add them to the input errors on the notifications
+// map.
+//
+// For each field in data, if the field is an InputValidator,
+// the input checking logic will just be handed off to its
+// ValidateInput method; if the field is a RequestValueReceiver, the
+// error value returned from Receive will be used to validate;
+// otherwise, we will attempt to check that the input value is
+// assignable to the field.
+func RespondWithInputErrors(ctx context.Context, notifications MessageMap, data interface{}) error {
+	dataType := reflect.TypeOf(data)
+	params, err := web_request_readers.ParseParams(ctx)
+	if err != nil {
+		return err
+	}
+	addInputErrors(dataType, params, notifications)
+
+	for key := range params {
+		notifications.SetInputMessage(key, "No target field found for this input")
+	}
+	return Respond(ctx, http.StatusBadRequest, notifications, notifications)
+}
+
+// addInputErrors (which, to be honest, should be in the
+// web_request_parsers package) walks through
+func addInputErrors(dataType reflect.Type, params objx.Map, notifications MessageMap) {
+	for i := 0; i < dataType.NumField(); i++ {
+		field := dataType.Field(i)
+		if field.Anonymous {
+			addInputErrors(field.Type, params, notifications)
+			continue
+		}
+
+		name, args := web_request_readers.NameAndArgs(dataType.Field(i))
+
+		optional := false
+		for _, arg := range args {
+			if arg == "optional" {
+				optional = true
+			}
+		}
+
+		value, ok := params[name]
+		if !ok {
+			if !optional {
+				notifications.SetInputMessage(name, "No input for required field")
+			}
+			continue
+		}
+
+		// We're now at the point where we know this parameter has a
+		// target field and will be checked, so remove it from the
+		// map.
+		delete(params, name)
+
+		var emptyValue reflect.Value
+		fieldType := field.Type
+		if fieldType.Kind() == reflect.Ptr {
+			emptyValue = reflect.New(fieldType.Elem())
+		} else {
+			emptyValue = reflect.Zero(fieldType)
+		}
+
+		// A type switch would look cleaner here, but we want a very
+		// specific order of preference for these interfaces.  A type
+		// switch does not guarantee any preferred order, just that
+		// one valid case will be executed.
+		emptyInter := emptyValue.Interface()
+		if validator, ok := emptyInter.(InputValidator); ok {
+			if err := validator.ValidateInput(value); err != nil {
+				notifications.SetInputMessage(name, err.Error())
+			}
+			continue
+		}
+		if receiver, ok := emptyInter.(web_request_readers.RequestValueReceiver); ok {
+			if err := receiver.Receive(value); err != nil {
+				notifications.SetInputMessage(name, err.Error())
+			}
+			continue
+		}
+		if !reflect.TypeOf(value).ConvertibleTo(fieldType) {
+			notifications.SetInputMessage(name, "Input is of the wrong type and cannot be converted")
+		}
+	}
 }
 
 // Respond performs an API response, adding some additional data to
