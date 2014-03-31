@@ -258,6 +258,9 @@ func createResponseValue(value reflect.Value, options objx.Map, constructor func
 // assignable to the field.
 func RespondWithInputErrors(ctx context.Context, notifications MessageMap, data interface{}) error {
 	dataType := reflect.TypeOf(data)
+	if dataType.Kind() == reflect.Ptr {
+		dataType = dataType.Elem()
+	}
 	params, err := web_request_readers.ParseParams(ctx)
 	if err != nil {
 		return err
@@ -267,7 +270,13 @@ func RespondWithInputErrors(ctx context.Context, notifications MessageMap, data 
 	for key := range params {
 		notifications.SetInputMessage(key, "No target field found for this input")
 	}
-	return Respond(ctx, http.StatusBadRequest, notifications, notifications)
+	status := http.StatusBadRequest
+	if len(notifications.InputMessages()) == 0 {
+		// There were no errors from the input, but something still
+		// went wrong - this is probably an internal server error.
+		status = http.StatusInternalServerError
+	}
+	return Respond(ctx, status, notifications, notifications)
 }
 
 // addInputErrors (which, to be honest, should be in the
@@ -281,6 +290,9 @@ func addInputErrors(dataType reflect.Type, params objx.Map, notifications Messag
 		}
 
 		name, args := web_request_readers.NameAndArgs(dataType.Field(i))
+		if name == "-" {
+			continue
+		}
 
 		optional := false
 		for _, arg := range args {
