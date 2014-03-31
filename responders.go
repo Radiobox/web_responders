@@ -279,6 +279,49 @@ func RespondWithInputErrors(ctx context.Context, notifications MessageMap, data 
 	return Respond(ctx, status, notifications, notifications)
 }
 
+func checkForInputError(fieldType reflect.Type, value interface{}) error {
+
+	var emptyValue reflect.Value
+	if fieldType.Kind() == reflect.Ptr {
+		emptyValue = reflect.New(fieldType.Elem())
+	} else {
+		emptyValue = reflect.Zero(fieldType)
+	}
+
+	// A type switch would look cleaner here, but we want a very
+	// specific order of preference for these interfaces.  A type
+	// switch does not guarantee any preferred order, just that
+	// one valid case will be executed.
+	emptyInter := emptyValue.Interface()
+	if validator, ok := emptyInter.(InputValidator); ok {
+		return validator.ValidateInput(value)
+	}
+	if receiver, ok := emptyInter.(web_request_readers.RequestValueReceiver); ok {
+		return receiver.Receive(value)
+	}
+	fieldTypeName := fieldType.Name()
+	if fieldType.Kind() == reflect.Struct && strings.HasPrefix(fieldTypeName, SqlNullablePrefix) {
+		// database/sql defines many Null* types,
+		// where the fields are Valid (a bool) and the
+		// name of the type (everything after Null).
+		// We're trying to support them (somewhat)
+		// here.
+		typeName := fieldTypeName[len(SqlNullablePrefix):]
+		nullField, ok := fieldType.FieldByName(typeName)
+		if ok {
+			// This is almost definitely an sql.Null* type.
+			if value == nil {
+				return nil
+			}
+			fieldType = nullField.Type
+		}
+	}
+	if !reflect.TypeOf(value).ConvertibleTo(fieldType) {
+		return errors.New("Input is of the wrong type and cannot be converted")
+	}
+	return nil
+}
+
 // addInputErrors (which, to be honest, should be in the
 // web_request_parsers package) walks through
 func addInputErrors(dataType reflect.Type, params objx.Map, notifications MessageMap) {
@@ -289,58 +332,35 @@ func addInputErrors(dataType reflect.Type, params objx.Map, notifications Messag
 			continue
 		}
 
-		name, args := web_request_readers.NameAndArgs(dataType.Field(i))
-		if name == "-" {
-			continue
-		}
-
-		optional := false
-		for _, arg := range args {
-			if arg == "optional" {
-				optional = true
+		if unicode.IsUpper(rune(field.Name[0])) {
+			name, args := web_request_readers.NameAndArgs(field)
+			if name == "-" {
+				continue
 			}
-		}
 
-		value, ok := params[name]
-		if !ok {
-			if !optional {
-				notifications.SetInputMessage(name, "No input for required field")
+			optional := false
+			for _, arg := range args {
+				if arg == "optional" {
+					optional = true
+				}
 			}
-			continue
-		}
 
-		// We're now at the point where we know this parameter has a
-		// target field and will be checked, so remove it from the
-		// map.
-		delete(params, name)
+			value, ok := params[name]
+			if !ok {
+				if !optional {
+					notifications.SetInputMessage(name, "No input for required field")
+				}
+				continue
+			}
 
-		var emptyValue reflect.Value
-		fieldType := field.Type
-		if fieldType.Kind() == reflect.Ptr {
-			emptyValue = reflect.New(fieldType.Elem())
-		} else {
-			emptyValue = reflect.Zero(fieldType)
-		}
+			// We're now at the point where we know this parameter has a
+			// target field and will be checked, so remove it from the
+			// map.
+			delete(params, name)
 
-		// A type switch would look cleaner here, but we want a very
-		// specific order of preference for these interfaces.  A type
-		// switch does not guarantee any preferred order, just that
-		// one valid case will be executed.
-		emptyInter := emptyValue.Interface()
-		if validator, ok := emptyInter.(InputValidator); ok {
-			if err := validator.ValidateInput(value); err != nil {
+			if err := checkForInputError(field.Type, value); err != nil {
 				notifications.SetInputMessage(name, err.Error())
 			}
-			continue
-		}
-		if receiver, ok := emptyInter.(web_request_readers.RequestValueReceiver); ok {
-			if err := receiver.Receive(value); err != nil {
-				notifications.SetInputMessage(name, err.Error())
-			}
-			continue
-		}
-		if !reflect.TypeOf(value).ConvertibleTo(fieldType) {
-			notifications.SetInputMessage(name, "Input is of the wrong type and cannot be converted")
 		}
 	}
 }
