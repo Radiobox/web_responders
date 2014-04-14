@@ -281,11 +281,13 @@ func RespondWithInputErrors(ctx context.Context, notifications MessageMap, data 
 
 func checkForInputError(fieldType reflect.Type, value interface{}) error {
 
+	// We always want to check the pointer to the value (and never the
+	// pointer to the pointer to the value) for interface matching.
 	var emptyValue reflect.Value
 	if fieldType.Kind() == reflect.Ptr {
 		emptyValue = reflect.New(fieldType.Elem())
 	} else {
-		emptyValue = reflect.Zero(fieldType)
+		emptyValue = reflect.New(fieldType)
 	}
 
 	// A type switch would look cleaner here, but we want a very
@@ -299,6 +301,7 @@ func checkForInputError(fieldType reflect.Type, value interface{}) error {
 	if receiver, ok := emptyInter.(web_request_readers.RequestValueReceiver); ok {
 		return receiver.Receive(value)
 	}
+
 	fieldTypeName := fieldType.Name()
 	if fieldType.Kind() == reflect.Struct && strings.HasPrefix(fieldTypeName, SqlNullablePrefix) {
 		// database/sql defines many Null* types,
