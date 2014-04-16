@@ -256,7 +256,11 @@ func createResponseValue(value reflect.Value, options objx.Map, constructor func
 // error value returned from Receive will be used to validate;
 // otherwise, we will attempt to check that the input value is
 // assignable to the field.
-func RespondWithInputErrors(ctx context.Context, notifications MessageMap, data interface{}) error {
+//
+// If checkMissing is true, required fields that have no value present in
+// the input parameters will be considered input errors and will be
+// added to the message map.
+func RespondWithInputErrors(ctx context.Context, notifications MessageMap, data interface{}, checkMissing bool) error {
 	dataType := reflect.TypeOf(data)
 	if dataType.Kind() == reflect.Ptr {
 		dataType = dataType.Elem()
@@ -265,7 +269,7 @@ func RespondWithInputErrors(ctx context.Context, notifications MessageMap, data 
 	if err != nil {
 		return err
 	}
-	addInputErrors(dataType, params, notifications)
+	addInputErrors(dataType, params, notifications, checkMissing)
 
 	for key := range params {
 		notifications.SetInputMessage(key, "No target field found for this input")
@@ -327,11 +331,11 @@ func checkForInputError(fieldType reflect.Type, value interface{}) error {
 
 // addInputErrors (which, to be honest, should be in the
 // web_request_parsers package) walks through
-func addInputErrors(dataType reflect.Type, params objx.Map, notifications MessageMap) {
+func addInputErrors(dataType reflect.Type, params objx.Map, notifications MessageMap, checkMissing bool) {
 	for i := 0; i < dataType.NumField(); i++ {
 		field := dataType.Field(i)
 		if field.Anonymous {
-			addInputErrors(field.Type, params, notifications)
+			addInputErrors(field.Type, params, notifications, checkMissing)
 			continue
 		}
 
@@ -350,7 +354,7 @@ func addInputErrors(dataType reflect.Type, params objx.Map, notifications Messag
 
 			value, ok := params[name]
 			if !ok {
-				if !optional {
+				if !optional && checkMissing {
 					notifications.SetInputMessage(name, "No input for required field")
 				}
 				continue
