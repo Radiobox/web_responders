@@ -47,18 +47,21 @@ func CreateResponse(data interface{}, optionList ...interface{}) interface{} {
 	var (
 		options     objx.Map
 		constructor func(interface{}, interface{}) interface{}
+		domain      string
 	)
 	switch len(optionList) {
+	case 3:
+		domain = optionList[2].(string)
 	case 2:
 		constructor = optionList[1].(func(interface{}, interface{}) interface{})
 		fallthrough
 	case 1:
 		options = optionList[0].(objx.Map)
 	}
-	return createResponse(data, false, options, constructor)
+	return createResponse(data, false, options, constructor, domain)
 }
 
-func createResponse(data interface{}, isSubResponse bool, options objx.Map, constructor func(interface{}, interface{}) interface{}) interface{} {
+func createResponse(data interface{}, isSubResponse bool, options objx.Map, constructor func(interface{}, interface{}) interface{}, domain string) interface{} {
 
 	// LazyLoad with options
 	if lazyLoader, ok := data.(LazyLoader); ok {
@@ -76,14 +79,28 @@ func createResponse(data interface{}, isSubResponse bool, options objx.Map, cons
 	}
 	switch value.Kind() {
 	case reflect.Struct:
-		data = createStructResponse(value, options, constructor)
+		data = createStructResponse(value, options, constructor, domain)
 	case reflect.Slice, reflect.Array:
-		data = createSliceResponse(value, options, constructor)
+		data = createSliceResponse(value, options, constructor, domain)
 		if options != nil && isSubResponse {
 			data = constructor(data, value)
 		}
 	case reflect.Map:
-		data = createMapResponse(value, options, constructor)
+		data = createMapResponse(value, options, constructor, domain)
+	case reflect.String:
+		if domain != "" {
+			// Prepend the domain to all links
+			strPtr := new(string)
+			strVal := reflect.ValueOf(strPtr).Elem()
+			strVal.Set(value.Convert(strVal.Type()))
+			str := *strPtr
+			if str != "" && str[0] == '/' {
+				str = domain + str
+			}
+			data = str
+		} else {
+			data = responseData
+		}
 	default:
 		data = responseData
 	}
@@ -121,7 +138,7 @@ func createNullableDbResponse(value reflect.Value, valueType reflect.Type) (inte
 
 // createMapResponse is a helper for generating a response value from
 // a value of type map.
-func createMapResponse(value reflect.Value, options objx.Map, constructor func(interface{}, interface{}) interface{}) interface{} {
+func createMapResponse(value reflect.Value, options objx.Map, constructor func(interface{}, interface{}) interface{}, domain string) interface{} {
 	response := reflect.MakeMap(value.Type())
 	for _, key := range value.MapKeys() {
 		var elementOptions objx.Map
@@ -141,7 +158,7 @@ func createMapResponse(value reflect.Value, options objx.Map, constructor func(i
 				panic("Don't know what to do with option")
 			}
 		}
-		itemResponse := createResponseValue(value.MapIndex(key), elementOptions, constructor)
+		itemResponse := createResponseValue(value.MapIndex(key), elementOptions, constructor, domain)
 		response.SetMapIndex(key, reflect.ValueOf(itemResponse))
 	}
 	return response.Interface()
@@ -149,11 +166,11 @@ func createMapResponse(value reflect.Value, options objx.Map, constructor func(i
 
 // createSliceResponse is a helper for generating a response value
 // from a value of type slice.
-func createSliceResponse(value reflect.Value, options objx.Map, constructor func(interface{}, interface{}) interface{}) interface{} {
+func createSliceResponse(value reflect.Value, options objx.Map, constructor func(interface{}, interface{}) interface{}, domain string) interface{} {
 	response := make([]interface{}, 0, value.Len())
 	for i := 0; i < value.Len(); i++ {
 		element := value.Index(i)
-		response = append(response, createResponseValue(element, options, constructor))
+		response = append(response, createResponseValue(element, options, constructor, domain))
 	}
 	return response
 }
@@ -173,7 +190,7 @@ func ResponseTag(field reflect.StructField) string {
 
 // createStructResponse is a helper for generating a response value
 // from a value of type struct.
-func createStructResponse(value reflect.Value, options objx.Map, constructor func(interface{}, interface{}) interface{}) interface{} {
+func createStructResponse(value reflect.Value, options objx.Map, constructor func(interface{}, interface{}) interface{}, domain string) interface{} {
 	structType := value.Type()
 
 	// Support "database/sql".Null* types, and any other types
@@ -189,7 +206,7 @@ func createStructResponse(value reflect.Value, options objx.Map, constructor fun
 		fieldValue := value.Field(i)
 
 		if fieldType.Anonymous {
-			embeddedResponse := CreateResponse(fieldValue.Interface(), options, constructor).(objx.Map)
+			embeddedResponse := CreateResponse(fieldValue.Interface(), options, constructor, domain).(objx.Map)
 			for key, value := range embeddedResponse {
 				// Don't overwrite values from the base struct
 				if _, ok := response[key]; !ok {
@@ -218,7 +235,7 @@ func createStructResponse(value reflect.Value, options objx.Map, constructor fun
 						panic("Don't know what to do with option")
 					}
 				}
-				response[name] = createResponseValue(fieldValue, subOptions, constructor)
+				response[name] = createResponseValue(fieldValue, subOptions, constructor, domain)
 			}
 		}
 	}
@@ -227,20 +244,31 @@ func createStructResponse(value reflect.Value, options objx.Map, constructor fun
 
 // createResponseValue is a helper for generating a response value for
 // a single value in a response object.
-func createResponseValue(value reflect.Value, options objx.Map, constructor func(interface{}, interface{}) interface{}) (responseValue interface{}) {
+func createResponseValue(value reflect.Value, options objx.Map, constructor func(interface{}, interface{}) interface{}, domain string) (responseValue interface{}) {
 	if options.Get("type").Str() != "full" {
 		switch source := value.Interface().(type) {
 		case ResponseValueCreator:
 			responseValue = source.ResponseValue(options)
+			if domain != "" {
+				if sourceStr, ok := responseValue.(string); ok {
+					if sourceStr != "" && sourceStr[0] == '/' {
+						responseValue = domain + sourceStr
+					}
+				}
+			}
 		case fmt.Stringer:
-			responseValue = source.String()
+			sourceStr := source.String()
+			if domain != "" && sourceStr != "" && sourceStr[0] == '/' {
+				sourceStr = domain + sourceStr
+			}
+			responseValue = sourceStr
 		case error:
 			responseValue = source.Error()
 		default:
-			responseValue = createResponse(value.Interface(), true, options, constructor)
+			responseValue = createResponse(value.Interface(), true, options, constructor, domain)
 		}
 	} else {
-		responseValue = createResponse(value.Interface(), true, options, constructor)
+		responseValue = createResponse(value.Interface(), true, options, constructor, domain)
 	}
 	return
 }
@@ -395,19 +423,20 @@ func Respond(ctx context.Context, status int, notifications MessageMap, data int
 
 	host := ctx.HttpRequest().Host
 
+	requestDomain := fmt.Sprintf("%s://%s", protocol, host)
 	if status == http.StatusOK {
 		location := "Error: no location present"
 		if locationer, ok := data.(Locationer); ok {
-			location := fmt.Sprintf("%s://%s%s", protocol, host, locationer.Location())
-			ctx.HttpResponseWriter().Header().Set("Location", location)
+			location = fmt.Sprintf("%s%s", requestDomain, locationer.Location())
 		}
+		ctx.HttpResponseWriter().Header().Set("Location", location)
 
 		if linker, ok := data.(RelatedLinker); ok {
 			linkMap := linker.RelatedLinks()
-			links := make([]string, 0, len(linkMap) + 1)
+			links := make([]string, 0, len(linkMap)+1)
 			links = append(links, fmt.Sprintf(`<%s>; rel="location"`, location))
 			for rel, link := range linkMap {
-				link := fmt.Sprintf(`<%s://%s%s>; rel="%s"`, protocol, host, link, rel)
+				link := fmt.Sprintf(`<%s%s>; rel="%s"`, requestDomain, link, rel)
 				links = append(links, link)
 			}
 			ctx.HttpResponseWriter().Header().Set("Link", strings.Join(links, ", "))
@@ -416,11 +445,11 @@ func Respond(ctx context.Context, status int, notifications MessageMap, data int
 
 	options := ctx.CodecOptions()
 	options.MergeHere(objx.Map{
-		"status":        status,
-		"input_params":  params,
-		"notifications": notifications,
-		"protocol":      protocol,
-		"host":          host,
+		"status":          status,
+		"input_params":    params,
+		"notifications":   notifications,
+		"domain":          requestDomain,
+		"response_header": ctx.HttpResponseWriter().Header(),
 	})
 
 	// Right now, this line is commented out to support our joins

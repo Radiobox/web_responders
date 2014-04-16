@@ -10,14 +10,12 @@ package codecs
 
 import (
 	"errors"
-	"fmt"
 	"github.com/Radiobox/web_responders"
 	"github.com/stretchr/goweb"
 	"github.com/stretchr/objx"
 	"log"
-	"path"
-	"strings"
 	"net/http"
+	"strings"
 )
 
 const (
@@ -26,41 +24,64 @@ const (
 	BasicMimeType   = typeCategory + "/" + typeName
 	defaultMimeType = BasicMimeType + "+json"
 	defaultBaseType = "application/json"
+
+	relStartPattern = `rel="`
+	relEndPattern   = `"`
 )
 
 type RadioboxApiCodec struct {
 }
 
+func parseLinks(linkHeader string) (relMap map[string]string) {
+	relMap = make(map[string]string)
+	link := linkHeader
+	for {
+		uriStart := strings.IndexRune(link, '<')
+		if uriStart == -1 {
+			break
+		}
+		link = link[uriStart+1:]
+		uriEnd := strings.IndexRune(link, '>')
+		if uriEnd == -1 {
+			break
+		}
+		uri := link[:uriEnd]
+		link = link[uriEnd:]
+
+		relStart := strings.Index(link, relStartPattern)
+		if relStart == -1 {
+			break
+		}
+		link = link[relStart+len(relStartPattern):]
+		relEnd := strings.Index(link, relEndPattern)
+		if relEnd == -1 {
+			break
+		}
+		rel := link[:relEnd]
+		relMap[rel] = uri
+
+		link = link[relEnd:]
+	}
+	return
+}
+
 func (codec *RadioboxApiCodec) CreateConstructor(options map[string]interface{}) func(interface{}, interface{}) interface{} {
+	responseHeader := options["response_header"].(http.Header)
 	return func(object interface{}, originalObject interface{}) interface{} {
 		meta := map[string]interface{}{
 			"code":         options["status"],
 			"input_params": options["input_params"],
 		}
 		if options["status"].(int) == http.StatusOK {
-			var links map[string]string
-			if linker, ok := originalObject.(web_responders.RelatedLinker); ok {
-				links = linker.RelatedLinks()
-			} else {
-				links = map[string]string{}
+			linkHeader := responseHeader.Get("Link")
+			meta["links"] = parseLinks(linkHeader)
+			meta["location"] = responseHeader.Get("Location")
+			if meta["location"] == "" {
+				meta["location"] = "Error: no location present"
 			}
-			protocol := options["protocol"].(string)
-			host := options["host"].(string)
-			for rel, link := range links {
-				fullLink := path.Join(host, link)
-				links[rel] = fmt.Sprintf("%s://%s", protocol, fullLink)
-			}
-			location := "Error: no location present"
-			if locationer, ok := originalObject.(web_responders.Locationer); ok {
-				location = fmt.Sprintf("%s://%s%s", protocol, host, locationer.Location())
-			}
-			links["location"] = location
-
-			meta["location"] = location
-			meta["links"] = links
 		}
 		response := map[string]interface{}{
-			"meta": meta,
+			"meta":          meta,
 			"notifications": options["notifications"],
 			"response":      object,
 		}
@@ -86,7 +107,8 @@ func (codec *RadioboxApiCodec) Marshal(object interface{}, options map[string]in
 		}
 	}
 	constructor := codec.CreateConstructor(options)
-	responseObject := web_responders.CreateResponse(object, joins, constructor)
+	domain := options["domain"].(string)
+	responseObject := web_responders.CreateResponse(object, joins, constructor, domain)
 	response := constructor(responseObject, object)
 
 	matchedType, ok := options["matched_type"].(string)
