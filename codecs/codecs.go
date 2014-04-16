@@ -32,53 +32,31 @@ const (
 type RadioboxApiCodec struct {
 }
 
-func parseLinks(linkHeader string) (relMap map[string]string) {
-	relMap = make(map[string]string)
-	link := linkHeader
-	for {
-		uriStart := strings.IndexRune(link, '<')
-		if uriStart == -1 {
-			break
-		}
-		link = link[uriStart+1:]
-		uriEnd := strings.IndexRune(link, '>')
-		if uriEnd == -1 {
-			break
-		}
-		uri := link[:uriEnd]
-		link = link[uriEnd:]
-
-		relStart := strings.Index(link, relStartPattern)
-		if relStart == -1 {
-			break
-		}
-		link = link[relStart+len(relStartPattern):]
-		relEnd := strings.Index(link, relEndPattern)
-		if relEnd == -1 {
-			break
-		}
-		rel := link[:relEnd]
-		relMap[rel] = uri
-
-		link = link[relEnd:]
-	}
-	return
-}
-
 func (codec *RadioboxApiCodec) CreateConstructor(options map[string]interface{}) func(interface{}, interface{}) interface{} {
-	responseHeader := options["response_header"].(http.Header)
 	return func(object interface{}, originalObject interface{}) interface{} {
 		meta := map[string]interface{}{
 			"code":         options["status"],
 			"input_params": options["input_params"],
 		}
 		if options["status"].(int) == http.StatusOK {
-			linkHeader := responseHeader.Get("Link")
-			meta["links"] = parseLinks(linkHeader)
-			meta["location"] = responseHeader.Get("Location")
-			if meta["location"] == "" {
-				meta["location"] = "Error: no location present"
+			var links map[string]string
+			if linker, ok := originalObject.(web_responders.RelatedLinker); ok {
+				links = linker.RelatedLinks()
+			} else {
+				links = map[string]string{}
 			}
+			domain := options["domain"].(string)
+			for rel, link := range links {
+				links[rel] = domain + link
+			}
+			location := "Error: no location present"
+			if locationer, ok := originalObject.(web_responders.Locationer); ok {
+				location = domain + locationer.Location()
+			}
+			links["location"] = location
+
+			meta["location"] = location
+			meta["links"] = links
 		}
 		response := map[string]interface{}{
 			"meta":          meta,

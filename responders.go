@@ -407,7 +407,7 @@ func addInputErrors(dataType reflect.Type, params objx.Map, notifications Messag
 //
 // TODO: Move the with={} parameter to options in the mimetypes in the
 // Accept header.
-func Respond(ctx context.Context, status int, notifications MessageMap, data interface{}) error {
+func Respond(ctx context.Context, status int, notifications MessageMap, data interface{}, useFullDomain ...bool) error {
 	params, err := web_request_readers.ParseParams(ctx)
 	if err != nil {
 		return err
@@ -442,14 +442,18 @@ func Respond(ctx context.Context, status int, notifications MessageMap, data int
 			ctx.HttpResponseWriter().Header().Set("Link", strings.Join(links, ", "))
 		}
 	}
+	// Transitionary period - don't pass the domain to the codec
+	// unless it's requested in the responder
+	if len(useFullDomain) == 0 || useFullDomain[0] == false {
+		requestDomain = ""
+	}
 
 	options := ctx.CodecOptions()
 	options.MergeHere(objx.Map{
-		"status":          status,
-		"input_params":    params,
-		"notifications":   notifications,
-		"domain":          requestDomain,
-		"response_header": ctx.HttpResponseWriter().Header(),
+		"status":        status,
+		"input_params":  params,
+		"notifications": notifications,
+		"domain":        requestDomain,
 	})
 
 	// Right now, this line is commented out to support our joins
