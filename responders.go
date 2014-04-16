@@ -395,14 +395,23 @@ func Respond(ctx context.Context, status int, notifications MessageMap, data int
 
 	host := ctx.HttpRequest().Host
 
-	if linker, ok := data.(RelatedLinker); ok {
-		linkMap := linker.RelatedLinks()
-		links := make([]string, 0, len(linkMap))
-		for rel, link := range linkMap {
-			link := fmt.Sprintf(`<%s://%s%s>; rel="%s"`, protocol, host, link, rel)
-			links = append(links, link)
+	if status == http.StatusOK {
+		location := "Error: no location present"
+		if locationer, ok := data.(Locationer); ok {
+			location := fmt.Sprintf("%s://%s%s", protocol, host, locationer.Location())
+			ctx.HttpResponseWriter().Header().Set("Location", location)
 		}
-		ctx.HttpResponseWriter().Header().Set("Link", strings.Join(links, ", "))
+
+		if linker, ok := data.(RelatedLinker); ok {
+			linkMap := linker.RelatedLinks()
+			links := make([]string, 0, len(linkMap) + 1)
+			links = append(links, fmt.Sprintf(`<%s>; rel="location"`, location))
+			for rel, link := range linkMap {
+				link := fmt.Sprintf(`<%s://%s%s>; rel="%s"`, protocol, host, link, rel)
+				links = append(links, link)
+			}
+			ctx.HttpResponseWriter().Header().Set("Link", strings.Join(links, ", "))
+		}
 	}
 
 	options := ctx.CodecOptions()

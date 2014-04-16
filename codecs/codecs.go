@@ -17,6 +17,7 @@ import (
 	"log"
 	"path"
 	"strings"
+	"net/http"
 )
 
 const (
@@ -32,25 +33,34 @@ type RadioboxApiCodec struct {
 
 func (codec *RadioboxApiCodec) CreateConstructor(options map[string]interface{}) func(interface{}, interface{}) interface{} {
 	return func(object interface{}, originalObject interface{}) interface{} {
-		var links map[string]string
-		if linker, ok := originalObject.(web_responders.RelatedLinker); ok {
-			links = linker.RelatedLinks()
-		} else {
-			links = map[string]string{}
+		meta := map[string]interface{}{
+			"code":         options["status"],
+			"input_params": options["input_params"],
 		}
-		protocol := options["protocol"].(string)
-		host := options["host"].(string)
-		for rel, link := range links {
-			fullLink := path.Join(host, link)
-			links[rel] = fmt.Sprintf("%s://%s", protocol, fullLink)
-		}
+		if options["status"].(int) == http.StatusOK {
+			var links map[string]string
+			if linker, ok := originalObject.(web_responders.RelatedLinker); ok {
+				links = linker.RelatedLinks()
+			} else {
+				links = map[string]string{}
+			}
+			protocol := options["protocol"].(string)
+			host := options["host"].(string)
+			for rel, link := range links {
+				fullLink := path.Join(host, link)
+				links[rel] = fmt.Sprintf("%s://%s", protocol, fullLink)
+			}
+			location := "Error: no location present"
+			if locationer, ok := originalObject.(web_responders.Locationer); ok {
+				location = fmt.Sprintf("%s://%s%s", protocol, host, locationer.Location())
+			}
+			links["location"] = location
 
+			meta["location"] = location
+			meta["links"] = links
+		}
 		response := map[string]interface{}{
-			"meta": map[string]interface{}{
-				"code":         options["status"],
-				"input_params": options["input_params"],
-				"links":        links,
-			},
+			"meta": meta,
 			"notifications": options["notifications"],
 			"response":      object,
 		}
