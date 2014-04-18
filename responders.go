@@ -249,22 +249,11 @@ func createResponseValue(value reflect.Value, options objx.Map, constructor func
 	if options.Get("type").Str() != "full" {
 		switch source := value.Interface().(type) {
 		case ResponseValueCreator:
-			responseValue = source.ResponseValue(options)
-			if domain != "" {
-				if sourceStr, ok := responseValue.(string); ok {
-					if sourceStr != "" && sourceStr[0] == '/' {
-						responseValue = domain + sourceStr
-					}
-				}
-			}
+			responseValue = createResponse(source.ResponseValue(options), true, options, constructor, domain)
 		case fmt.Stringer:
-			sourceStr := source.String()
-			if domain != "" && sourceStr != "" && sourceStr[0] == '/' {
-				sourceStr = domain + sourceStr
-			}
-			responseValue = sourceStr
+			responseValue = createResponse(source.String(), true, options, constructor, domain)
 		case error:
-			responseValue = source.Error()
+			responseValue = createResponse(source.Error(), true, options, constructor, domain)
 		default:
 			responseValue = createResponse(value.Interface(), true, options, constructor, domain)
 		}
