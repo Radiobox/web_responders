@@ -52,6 +52,7 @@ func CreateResponse(data interface{}, optionList ...interface{}) interface{} {
 	switch len(optionList) {
 	case 3:
 		domain = optionList[2].(string)
+		fallthrough
 	case 2:
 		constructor = optionList[1].(func(interface{}, interface{}) interface{})
 		fallthrough
