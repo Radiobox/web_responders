@@ -289,6 +289,9 @@ func RespondWithInputErrors(ctx context.Context, notifications MessageMap, data 
 	}
 	addInputErrors(dataType, params, notifications, checkMissing)
 
+	// addInputErrors will delete all params that it has checked for
+	// input errors, so anything remaining in params has no matching
+	// field.
 	for key := range params {
 		notifications.SetInputMessage(key, "No target field found for this input")
 	}
