@@ -289,9 +289,6 @@ func RespondWithInputErrors(ctx context.Context, notifications MessageMap, data 
 	}
 	addInputErrors(dataType, params, notifications, checkMissing)
 
-	for key := range params {
-		notifications.SetInputMessage(key, "No target field found for this input")
-	}
 	status := http.StatusBadRequest
 	if len(notifications.InputMessages()) == 0 {
 		// There were no errors from the input, but something still
