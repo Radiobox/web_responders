@@ -287,6 +287,7 @@ func RespondWithInputErrors(ctx context.Context, notifications MessageMap, data 
 	if err != nil {
 		return err
 	}
+	params = params.Copy()
 	addInputErrors(dataType, params, notifications, checkMissing)
 
 	// addInputErrors will delete all params that it has checked for
