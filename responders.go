@@ -402,12 +402,14 @@ func addInputErrors(dataType reflect.Type, params objx.Map, notifications Messag
 // TODO: Move the with={} parameter to options in the mimetypes in the
 // Accept header.
 func Respond(ctx context.Context, status int, notifications MessageMap, data interface{}, useFullDomain ...bool) error {
-	params, err := web_request_readers.ParseParams(ctx)
+	body, err := web_request_readers.ParseBody(ctx)
 	if err != nil {
 		return err
 	}
 	if ctx.QueryParams().Has("joins") {
-		params.Set("joins", ctx.QueryValue("joins"))
+		if m, ok := body.(objx.Map); ok {
+			m.Set("joins", ctx.QueryValue("joins"))
+		}
 	}
 
 	protocol := "http"
@@ -445,7 +447,7 @@ func Respond(ctx context.Context, status int, notifications MessageMap, data int
 	options := ctx.CodecOptions()
 	options.MergeHere(objx.Map{
 		"status":        status,
-		"input_params":  params,
+		"input_params":  body,
 		"notifications": notifications,
 		"domain":        requestDomain,
 	})

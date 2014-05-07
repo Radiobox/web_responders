@@ -73,8 +73,8 @@ func (codec *RadioboxApiCodec) Marshal(object interface{}, options map[string]in
 	var joinsStr string
 	if joinsValue, ok := options["joins"]; ok {
 		joinsStr = joinsValue.(string)
-	} else {
-		joinsStr = options["input_params"].(objx.Map).Get("joins").Str()
+	} else if m, ok := options["input_params"].(objx.Map); ok {
+		joinsStr = m.Get("joins").Str()
 	}
 	var joins objx.Map
 	if joinsStr != "" {
