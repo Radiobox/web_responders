@@ -246,7 +246,9 @@ func createStructResponse(value reflect.Value, options objx.Map, constructor fun
 // createResponseValue is a helper for generating a response value for
 // a single value in a response object.
 func createResponseValue(value reflect.Value, options objx.Map, constructor func(interface{}, interface{}) interface{}, domain string) (responseValue interface{}) {
-	if options.Get("type").Str() != "full" {
+	if value.Kind() == reflect.Ptr && !value.Elem().IsValid() {
+		responseValue = nil
+	} else if options.Get("type").Str() != "full" {
 		switch source := value.Interface().(type) {
 		case ResponseValueCreator:
 			responseValue = createResponse(source.ResponseValue(options), true, options, constructor, domain)
