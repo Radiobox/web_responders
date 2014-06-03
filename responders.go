@@ -248,6 +248,9 @@ func createStructResponse(value reflect.Value, options objx.Map, constructor fun
 func createResponseValue(value reflect.Value, options objx.Map, constructor func(interface{}, interface{}) interface{}, domain string) (responseValue interface{}) {
 	if value.Kind() == reflect.Ptr && !value.Elem().IsValid() {
 		responseValue = nil
+		if nilResponder, ok := value.Interface().(NilResponder); ok {
+			responseValue = nilResponder.NilResponseValue()
+		}
 	} else if options.Get("type").Str() != "full" {
 		switch source := value.Interface().(type) {
 		case ResponseValueCreator:
