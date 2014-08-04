@@ -372,16 +372,21 @@ func addInputErrors(dataType reflect.Type, params objx.Map, notifications Messag
 				continue
 			}
 
-			optional := false
+			required := web_request_readers.DefaultRequired
 			for _, arg := range args {
 				if arg == "optional" {
-					optional = true
+					required = false
+					break
+				}
+				if arg == "required" {
+					required = true
+					break
 				}
 			}
 
 			value, ok := params[name]
 			if !ok {
-				if !optional && checkMissing {
+				if required && checkMissing {
 					notifications.SetInputMessage(name, "No input for required field")
 				}
 				continue
@@ -457,10 +462,7 @@ func Respond(ctx context.Context, status int, notifications MessageMap, data int
 		"domain":        requestDomain,
 	})
 
-	// Right now, this line is commented out to support our joins
-	// logic.  Unfortunately, that means that codecs other than our
-	// custom codecs from this package will not work.  Whoops.
-	// data = CreateResponse(data)
+	data = CreateResponse(data)
 
 	return goweb.API.WriteResponseObject(ctx, status, data)
 }
