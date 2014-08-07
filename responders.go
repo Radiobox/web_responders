@@ -83,7 +83,7 @@ func createResponse(data interface{}, isSubResponse bool, options objx.Map, cons
 		data = createStructResponse(value, options, constructor, domain)
 	case reflect.Slice, reflect.Array:
 		data = createSliceResponse(value, options, constructor, domain)
-		if options != nil && isSubResponse {
+		if constructor != nil && isSubResponse {
 			data = constructor(data, value)
 		}
 	case reflect.Map:
@@ -422,14 +422,17 @@ func Respond(ctx context.Context, status int, notifications MessageMap, data int
 		}
 	}
 
-	protocol := "http"
-	if ctx.HttpRequest().TLS != nil {
-		protocol += "s"
+	var requestDomain string
+	if len(useFullDomain) > 0 && useFullDomain[0] {
+		protocol := "http"
+		if ctx.HttpRequest().TLS != nil {
+			protocol += "s"
+		}
+
+		host := ctx.HttpRequest().Host
+
+		requestDomain = fmt.Sprintf("%s://%s", protocol, host)
 	}
-
-	host := ctx.HttpRequest().Host
-
-	requestDomain := fmt.Sprintf("%s://%s", protocol, host)
 	if status == http.StatusOK {
 		location := "Error: no location present"
 		if locationer, ok := data.(Locationer); ok {
@@ -462,7 +465,7 @@ func Respond(ctx context.Context, status int, notifications MessageMap, data int
 		"domain":        requestDomain,
 	})
 
-	data = CreateResponse(data)
+	data = CreateResponse(data, options, nil, requestDomain)
 
 	return goweb.API.WriteResponseObject(ctx, status, data)
 }
