@@ -52,9 +52,14 @@ func CreateResponse(data interface{}, optionList ...interface{}) interface{} {
 	switch len(optionList) {
 	case 3:
 		domain = optionList[2].(string)
+		if domain != "" && domain[len(domain)-1] == '/' {
+			domain = domain[:len(domain)-1]
+		}
 		fallthrough
 	case 2:
-		constructor = optionList[1].(func(interface{}, interface{}) interface{})
+		if optionList[1] != nil {
+			constructor = optionList[1].(func(interface{}, interface{}) interface{})
+		}
 		fallthrough
 	case 1:
 		options = optionList[0].(objx.Map)
@@ -151,12 +156,14 @@ func createMapResponse(value reflect.Value, options objx.Map, constructor func(i
 			} else if options.Has("*") {
 				elementOptionsValue = options.Get("*")
 			}
-			if elementOptionsValue.IsMSI() {
-				elementOptions = objx.Map(elementOptionsValue.MSI())
-			} else if elementOptionsValue.IsObjxMap() {
-				elementOptions = elementOptionsValue.ObjxMap()
-			} else {
-				panic("Don't know what to do with option")
+			if elementOptionsValue != nil {
+				if elementOptionsValue.IsMSI() {
+					elementOptions = objx.Map(elementOptionsValue.MSI())
+				} else if elementOptionsValue.IsObjxMap() {
+					elementOptions = elementOptionsValue.ObjxMap()
+				} else {
+					panic("Don't know what to do with option")
+				}
 			}
 		}
 		itemResponse := createResponseValue(value.MapIndex(key), elementOptions, constructor, domain)
@@ -430,8 +437,9 @@ func Respond(ctx context.Context, status int, notifications MessageMap, data int
 		}
 
 		host := ctx.HttpRequest().Host
-
-		requestDomain = fmt.Sprintf("%s://%s", protocol, host)
+		if host != "" {
+			requestDomain = fmt.Sprintf("%s://%s", protocol, host)
+		}
 	}
 	if status == http.StatusOK {
 		location := "Error: no location present"
