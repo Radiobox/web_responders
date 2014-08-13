@@ -1,19 +1,14 @@
 package web_responders
 
-// ResponseObjectCreator should be used for types that don't want
-// their actual value used in the response.  For example, if you have
-// a collection type that you want to appear as a slice, but needs to
-// be a struct type to keep track of some data, you can use this to
-// return the slice value.
+// ResponseDataConverter should be used for types that want a
+// different structure or value used as their data for responses,
+// regardless of whether they're used as the top level response data
+// or a sub-element within the response.
 //
-// This should not be confused with ResponseValueCreator, which is
-// only used when a type is a value within a response object, not the
-// response object itself.
-//
-// Note that if your ResponseObjectCreator also implements LazyLoader
-// and/or RelatedLinker, LazyLoad() and/or RelatedLinks() will still
-// be called on the original object, but the value returned by
-// ResponseObject() will be used as the response body.
+// Note that if your type implements both ResponseConverter and
+// ResponseElementConverter, ResponseElementConverter will override
+// ResponseConverter when the type is used as a sub-element in a
+// response.
 //
 // Example:
 //
@@ -22,9 +17,11 @@ package web_responders
 //         queryArgs map[string]string
 //     }
 //
-//     func (coll *StringCollection) ResponseObject() interface{} {
+//     func (coll *StringCollection) ResponseData() interface{} {
 //         return coll.collection
 //     }
-type ResponseObjectCreator interface {
-	ResponseObject() interface{}
+type ResponseConverter interface {
+	// ResponseData should return the data that will be used instead
+	// of the ResponseConverter in a response.
+	ResponseData() interface{}
 }
