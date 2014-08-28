@@ -65,8 +65,12 @@ func (mm MessageMap) AddErrorMessage(messages ...interface{}) {
 		if !ok {
 			err = errors.New(fmt.Sprintf("%s", message))
 		}
-		mm["err"] = append(mm.Errors(), err)
+		mm.AddError(err)
 	}
+}
+
+func (mm MessageMap) AddError(errors ...error) {
+	mm["err"] = append(mm.Errors(), errors...)
 }
 
 // Errors returns a slice of all the error messages that have been
