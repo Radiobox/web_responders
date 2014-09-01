@@ -6,14 +6,24 @@ package web_responders
 import (
 	"errors"
 	"fmt"
-	"github.com/stretchr/objx"
 	"reflect"
 	"strings"
 	"unicode"
+
+	"github.com/stretchr/objx"
 )
 
 // database/sql has nullable values which all have the same prefix.
 const SqlNullablePrefix = "Null"
+
+var nullableKinds = []reflect.Kind{
+	reflect.Chan,
+	reflect.Func,
+	reflect.Interface,
+	reflect.Map,
+	reflect.Ptr,
+	reflect.Slice,
+}
 
 // A Constructor is a function that is called prior to data conversion
 // on a data object.  It is called once per value in the response,
@@ -236,12 +246,25 @@ func (response *Response) createStructResponse(value reflect.Value, depth int) i
 // createResponseValue is a helper for generating responses from
 // sub-elements of a response.
 func (response *Response) createResponseValue(value reflect.Value, depth int) interface{} {
+	if !value.IsValid() {
+		return nil
+	}
 	responseValue := value.Interface()
-	if value.Kind() == reflect.Ptr && !value.Elem().IsValid() {
-		if nilResponder, ok := responseValue.(NilElementConverter); ok {
-			responseValue = nilResponder.NilElementData()
+	valueCanBeNil := false
+	for _, kind := range nullableKinds {
+		if value.Kind() == kind {
+			valueCanBeNil = true
+			break
 		}
-	} else if converter, ok := responseValue.(ResponseElementConverter); ok {
+	}
+	if valueCanBeNil && value.IsNil() {
+		nilResponder, ok := responseValue.(NilElementConverter)
+		if !ok {
+			return nil
+		}
+		responseValue = nilResponder.NilElementData()
+	}
+	if converter, ok := responseValue.(ResponseElementConverter); ok {
 		responseValue = converter.ResponseElementData(response.Options)
 	}
 	return response.createResponse(responseValue, depth)
