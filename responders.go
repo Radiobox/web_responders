@@ -100,9 +100,6 @@ func (response *Response) createOutput() interface{} {
 	if err, ok := response.Data.(error); ok {
 		return err.Error()
 	}
-	if _, ok := response.Data.(MessageMap); ok {
-		return response.Data
-	}
 
 	return response.createResponse(response.Data, 0)
 }
