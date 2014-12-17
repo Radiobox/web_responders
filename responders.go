@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"unicode"
 
 	"github.com/stretchr/objx"
 )
@@ -227,14 +226,30 @@ func (response *Response) createStructResponse(value reflect.Value, depth int) i
 					respMap[key] = value
 				}
 			}
-		} else if unicode.IsUpper(rune(fieldType.Name[0])) {
-			name := ResponseTag(fieldType)
-			switch name {
-			case "-":
-				continue
-			default:
-				respMap[name] = response.createResponseValue(fieldValue, depth+1)
+			continue
+		}
+		name := ResponseTag(fieldType)
+		switch name {
+		case "-":
+			continue
+		default:
+			if fieldType.PkgPath != "" {
+				// Handle unexported fields using getters and setters, if possible.
+				getterName := strings.Title(fieldType.Name)
+				receiver := value
+				if receiver.CanAddr() {
+					// Methods on values are always callable on the pointer, as well;
+					// but the opposite is not true, so always use the pointer when
+					// possible.
+					receiver = receiver.Addr()
+				}
+				getterMethod, exists := receiver.Type().MethodByName(getterName)
+				if !exists || getterMethod.Type.NumIn() != 1 || getterMethod.Type.NumOut() != 1 {
+					continue
+				}
+				fieldValue = getterMethod.Func.Call([]reflect.Value{receiver})[0]
 			}
+			respMap[name] = response.createResponseValue(fieldValue, depth+1)
 		}
 	}
 	return respMap
