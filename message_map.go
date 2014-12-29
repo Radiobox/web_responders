@@ -1,6 +1,7 @@
 package web_responders
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -18,7 +19,7 @@ type MessageMap map[string]interface{}
 // NewMessageMap returns a MessageMap that is properly initialized.
 func NewMessageMap() MessageMap {
 	return MessageMap{
-		"err":   []string{},
+		"err":   []error{},
 		"warn":  []string{},
 		"info":  []string{},
 		"input": map[string]string{},
@@ -26,7 +27,7 @@ func NewMessageMap() MessageMap {
 }
 
 func (mm MessageMap) log(severity string, messages ...interface{}) {
-	prefix := strings.ToUpper(severity)+":"
+	prefix := strings.ToUpper(severity) + ":"
 	log.Print(append([]interface{}{prefix}, messages...)...)
 }
 
@@ -50,18 +51,32 @@ func (mm MessageMap) joinMessages(messages ...interface{}) string {
 
 func (mm MessageMap) addMessage(severity string, messages ...interface{}) {
 	go mm.log(severity, messages...)
-	mm[severity] = append(mm[severity].([]string), mm.joinMessages(messages...))
+	if severity == "err" {
+		mm.AddErrorMessage(messages...)
+	} else {
+		mm[severity] = append(mm[severity].([]string), mm.joinMessages(messages...))
+	}
 }
 
 // AddErrorMessage adds an error message to the message map.
 func (mm MessageMap) AddErrorMessage(messages ...interface{}) {
-	mm.addMessage("err", messages...)
+	for _, message := range messages {
+		err, ok := message.(error)
+		if !ok {
+			err = errors.New(fmt.Sprintf("%s", message))
+		}
+		mm.AddError(err)
+	}
+}
+
+func (mm MessageMap) AddError(errors ...error) {
+	mm["err"] = append(mm.Errors(), errors...)
 }
 
 // Errors returns a slice of all the error messages that have been
 // added to this message map.
-func (mm MessageMap) Errors() []string {
-	return mm["err"].([]string)
+func (mm MessageMap) Errors() []error {
+	return mm["err"].([]error)
 }
 
 // AddWarningMessage adds a warning message to the message map.
