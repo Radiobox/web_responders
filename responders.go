@@ -199,7 +199,17 @@ func (response *Response) createSliceResponse(value reflect.Value, depth int) in
 	respSlice := make([]interface{}, value.Len())
 	for i := 0; i < value.Len(); i++ {
 		element := value.Index(i)
-		respSlice[i] = response.createResponseValue(element, depth+1)
+		parseFunc := response.createResponseValue
+		if depth == 0 {
+			parseFunc = func(value reflect.Value, depth int) interface{} {
+				valueInter := value.Interface()
+				if collectionConverter, ok := valueInter.(CollectionResponseConverter); ok {
+					valueInter = collectionConverter.CollectionResponse()
+				}
+				return response.createResponse(valueInter, depth)
+			}
+		}
+		respSlice[i] = parseFunc(element, depth+1)
 	}
 	return respSlice
 }
